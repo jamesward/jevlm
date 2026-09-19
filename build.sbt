@@ -7,7 +7,7 @@ name := "jev-word-stream"
 
 libraryDependencies ++= Seq(
   "com.jamesward" %% "zio-typesafe-ai" % "0.0.2",
-  ("com.jamesward" %% "zio-evals" % "0.1.0" % Test)
+  ("com.jamesward" %% "zio-evals" % "0.1.1" % Test)
     .exclude("com.jamesward", "zio-typesafe-ai_3"),
   "dev.zio" %% "zio-http" % "3.11.6",
   "org.webjars.npm" % "tailwindcss__browser" % "4.3.3" % WebJar,

@@ -12,17 +12,18 @@ object RankedWordSourceSpec extends ZIOSpecDefault:
         case Transition.Done(_) => throw IllegalStateException("Word selection unexpectedly completed")
 
 
-  private val externalDataContext = PromptClassifier.Context(
-    requiresExternalData = true,
-    answerKind = PromptClassifier.AnswerKind.Prose,
-    numericAnswer = None,
-  )
+  private val externalDataContext = PromptClassifier.Context(requiresExternalData = true)
 
-  private def numericContext(answer: String) = PromptClassifier.Context(
-    requiresExternalData = false,
-    answerKind = PromptClassifier.AnswerKind.Numeric,
-    numericAnswer = Some(answer),
-  )
+  private def rankedPlan(initial: State): Vector[String] =
+    initial.promptContext.responsePlan.foldLeft((initial, Vector.empty[String])):
+      case ((state, selected), expected) =>
+        val candidates = RankedWordSource.candidates(state)
+        if candidates.map(_.word) != Vector(expected) then
+          throw IllegalStateException(s"Expected only '$expected', got ${candidates.map(_.word)}")
+        transition(state, Action.SelectWord(expected)) match
+          case Transition.Continue(next, _) => next -> (selected :+ expected)
+          case Transition.Done(_) => throw IllegalStateException("Planned word unexpectedly completed response")
+    ._2
   def spec = suite("RankedWordSource")(
     test("keeps prompt terms available without ranking them ahead of response vocabulary") {
       val candidates = RankedWordSource.candidates(State.initial(parsed("Explain Scala streams")))
@@ -70,16 +71,12 @@ object RankedWordSourceSpec extends ZIOSpecDefault:
         candidates.exists(_.word.toLowerCase == "llms"),
       )
     },
-    test("prioritizes native Jev preflight decisions") {
-      val weather = RankedWordSource.candidates(State.initial(parsed("what is the weather in denver?"), externalDataContext))
-      val arithmetic = RankedWordSource.candidates(State.initial(parsed("what is 2+2"), numericContext("4")))
-      val counting = RankedWordSource.candidates(State.initial(parsed("how many r's in stawberry"), numericContext("2")))
+    test("prioritizes external-data preflight decisions in exact order") {
+      val weatherState = State.initial(parsed("what is the weather in denver?"), externalDataContext)
 
       assertTrue(
-        weather.take(6).map(_.word) == Vector("I", "cannot", "access", "live", "or", "external"),
-        arithmetic.take(4).map(_.word) == Vector("The", "answer", "is", "4"),
-        counting.map(_.word).contains("2"),
-        weather.head.source == RankedWordSource.Source.JevPreflight,
+        rankedPlan(weatherState) == externalDataContext.responsePlan,
+        RankedWordSource.candidates(weatherState).head.source == RankedWordSource.Source.JevPreflight,
       )
     },
     test("uses multi-word context for grammar and removes repeated phrase continuations") {

@@ -1,4 +1,3 @@
-import com.jamesward.zio_typesafe_ai.TypeSafeAI
 import WordGeneration.*
 import zio.*
 import zio.http.*
@@ -28,7 +27,6 @@ object Main extends ZIOAppDefault:
     RequiredEnvironment.validateLive.flatMap: _ =>
       Server.serve(routes).provide(
         serverLayer,
-        Client.default,
-        TypeSafeAI.Client.live,
+        JevHttpLogging.default,
         WordGenerator.live,
       )

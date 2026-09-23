@@ -1,7 +1,7 @@
 import zio.*
 
 object RequiredEnvironment:
-  enum Variable(val name: String):
+  enum Variable(val name: String) derives CanEqual:
     case TypeSafeApiKey extends Variable("TYPESAFE_API_KEY")
 
   final case class Missing(variables: List[Variable]) extends RuntimeException(

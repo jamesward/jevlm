@@ -22,7 +22,7 @@ object MainRoutesSpec extends ZIOSpecDefault:
         response <- run(Request.post("/api/generate", Body.fromString("Say hello")))
         body <- response.body.asString.orDie
       yield assertTrue(
-        response.status == Status.Ok,
+        response.status.code == Status.Ok.code,
         body.contains("event: word"),
         body.contains("data: Hello"),
         body.contains("event: sentence"),
@@ -34,7 +34,7 @@ object MainRoutesSpec extends ZIOSpecDefault:
         response <- run(Request.post("/api/generate", Body.fromString("   ")))
         body <- response.body.asString.orDie
       yield assertTrue(
-        response.status == Status.BadRequest,
+        response.status.code == Status.BadRequest.code,
         body == "Enter a message for Jev to respond to.",
       )
     },

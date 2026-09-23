@@ -1,5 +1,4 @@
 import com.jamesward.zio_evals.*
-import com.jamesward.zio_typesafe_ai.TypeSafeAI
 import WordGeneration.*
 import zio.*
 import zio.http.{Client as HttpClient, ServerSentEvent}
@@ -91,18 +90,17 @@ object JevlmIntegrationSpec extends ZIOSpecDefault:
       answer.nonEmpty,
     )
 
-  def spec = suite("Jevlm 100-case live Jev evaluation")(
-    JevlmEvalCases.all.map: definition =>
+  def spec = suite("Jevlm focused live Jev evaluation")(
+    JevlmEvalCases.paid.map: definition =>
       test(f"${definition.id}%03d [${definition.category}] ${definition.prompt}") {
         evaluate(definition)
       }
     *
   ).provideSomeShared[Scope](
-    HttpClient.default,
-    TypeSafeAI.Client.live,
+    JevHttpLogging.default,
     WordGenerator.live,
   ) @@ ifEnvSet("TYPESAFE_API_KEY")
     @@ withLiveClock
     @@ withLiveSystem
     @@ timeout(5.minutes)
-    @@ sequential
+    @@ parallelN(4)

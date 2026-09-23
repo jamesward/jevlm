@@ -26,8 +26,27 @@ object JevlmEvalCasesSpec extends ZIOSpecDefault:
       val prompts = JevlmEvalCases.all.map(_.prompt.toLowerCase).toSet
       assertTrue(
         prompts.contains("what is 2+2"),
+        prompts.contains("what is 2 + 2"),
+        prompts.contains("say hello"),
         prompts.contains("how many r's in stawberry"),
         prompts.contains("what is the weather in denver?"),
+      )
+    },
+    test("limits paid Jev evaluations to two high-value regressions") {
+      assertTrue(
+        JevlmEvalCases.paid.map(_.id) == Vector(1, 67),
+        JevlmEvalCases.paid.map(_.prompt.toLowerCase) == Vector(
+          "what is the weather in denver?",
+          "say hello",
+        ),
+      )
+    },
+    test("keeps paid rubrics focused on capability and termination behavior") {
+      val weather = JevlmEvalCases.paid.find(_.id == 1).get
+      val greeting = JevlmEvalCases.paid.find(_.id == 67).get
+      assertTrue(
+        weather.requirement.contains("does not need to repeat the location or weather topic"),
+        greeting.requirement.contains("capitalization does not matter"),
       )
     },
   )

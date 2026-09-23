@@ -64,11 +64,7 @@ object WordGenerationSpec extends ZIOSpecDefault:
       )
     },
     test("does not expose endings for an incomplete tail and ends only after a sentence boundary") {
-      val context = PromptClassifier.Context(
-        requiresExternalData = true,
-        answerKind = PromptClassifier.AnswerKind.Prose,
-        numericAnswer = None,
-      )
+      val context = PromptClassifier.Context.unclassified
       val incomplete = Vector("The", "weather", "is", "a").foldLeft(State.initial(parsed("what is the weather in denver?"), context)):
         case (state, word) => transition(state, Action.SelectWord(word)) match
           case Transition.Continue(next, _) => next
@@ -85,6 +81,42 @@ object WordGenerationSpec extends ZIOSpecDefault:
         endingActions(incomplete).isEmpty,
         endingActions(complete) == Vector(Action.EndOfSentence),
         endingActions(ended) == Vector(Action.EndOfResponse),
+      )
+    },
+    test("forces clean completion immediately after an external-data response plan") {
+      val context = PromptClassifier.Context(requiresExternalData = true)
+      val initial = State.initial(parsed("what is the weather in denver?"), context)
+      val planned = context.responsePlan.foldLeft(initial):
+        case (state, word) => transition(state, Action.SelectWord(word)) match
+          case Transition.Continue(next, _) => next
+          case Transition.Done(_) => throw IllegalStateException("Plan ended before all words")
+      val punctuated = transition(planned, Action.EndOfSentence) match
+        case Transition.Continue(next, _) => next
+        case Transition.Done(_) => throw IllegalStateException("Sentence ending unexpectedly completed")
+
+      assertTrue(
+        endingActions(initial).isEmpty,
+        planned.response == context.responsePlan.mkString(" "),
+        endingActions(planned) == Vector(Action.EndOfSentence),
+        endingActions(punctuated) == Vector(Action.EndOfResponse),
+      )
+    },
+    test("allows a complete one-word response to end but blocks an incomplete one") {
+      val initial = State.initial(parsed("say hello"))
+      val hello = transition(initial, Action.SelectWord("hello")) match
+        case Transition.Continue(next, _) => next
+        case Transition.Done(_) => throw IllegalStateException("Word unexpectedly completed response")
+      val incomplete = transition(initial, Action.SelectWord("the")) match
+        case Transition.Continue(next, _) => next
+        case Transition.Done(_) => throw IllegalStateException("Word unexpectedly completed response")
+      val punctuated = transition(hello, Action.EndOfSentence) match
+        case Transition.Continue(next, _) => next
+        case Transition.Done(_) => throw IllegalStateException("Sentence ending unexpectedly completed response")
+
+      assertTrue(
+        endingActions(hello) == Vector(Action.EndOfSentence),
+        endingActions(incomplete).isEmpty,
+        endingActions(punctuated) == Vector(Action.EndOfResponse),
       )
     },
     test("detects repeated trigrams and forces completion before the loop bound") {

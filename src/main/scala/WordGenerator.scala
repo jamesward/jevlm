@@ -4,6 +4,7 @@ import WordGeneration.*
 import zio.*
 import zio.http.ServerSentEvent
 import zio.json.*
+import zio.schema.{Schema, derived}
 import zio.stream.*
 
 trait WordGenerator:
@@ -18,6 +19,33 @@ object WordGenerator:
     estimatedCostUsd: BigDecimal,
   ) derives JsonCodec
 
+
+  final case class BudgetView(
+    maxJevRounds: Int,
+    usedJevRounds: Int,
+    remainingJevRounds: Int,
+    maxCommittedWords: Int,
+    committedWords: Int,
+  ) derives Schema
+
+  final case class RetainedBranchView(id: String, probability: Double) derives Schema
+
+  final case class TraversalView(
+    phase: String,
+    retainedBranches: Vector[RetainedBranchView],
+  ) derives Schema
+
+  final case class GenerationView(
+    objective: String,
+    originalUserMessage: String,
+    factualConstraints: Vector[String],
+    accumulatedResponse: String,
+    currentSentenceTail: Vector[String],
+    wordsInCurrentSentence: Int,
+    traversal: TraversalView,
+    budget: BudgetView,
+    qualityRules: Vector[String],
+  ) derives Schema
 
   private final case class Completed(
     loop: LoopResult[String],
@@ -64,18 +92,23 @@ object WordGenerator:
     ) =
       (for
         preflight <- PromptClassifier.classify(prompt)
-        loop <- TypeSafeAI.loop(State.initial(prompt, preflight.context))(
+        loop <- TypeSafeAI.loopWithTurn(State.initial(prompt, preflight.context))(
           state => Content(stateView(state)),
           state => ZIO.succeed(loopOptions(state)),
         ):
-          (state, action) =>
-            transition(state, action) match
-              case Transition.Continue(next, emission) =>
-                val event = emission match
-                  case Emission.Word(value) => serverEvent("word", value)
-                  case Emission.SentenceEnd => serverEvent("sentence", ".")
-                emit(event).as(LoopStep.Continue(next))
-              case Transition.Done(response) => ZIO.succeed(LoopStep.Done(response))
+          (state, action, turn) =>
+            action match
+              case Action.SelectBranch(_) =>
+                descend(state, LexicalTree.retainBranches(state, turn)) match
+                  case Transition.Continue(next, _) => ZIO.succeed(LoopStep.Continue(next))
+                  case Transition.Done(output)       => ZIO.succeed(LoopStep.Done(output))
+              case Action.SelectWord(selected) =>
+                val word = LexicalTree.bestWord(state, turn).getOrElse(selected)
+                handleTransition(transition(state, Action.SelectWord(word)), emit)
+              case Action.EndOfSentence =>
+                handleTransition(transition(state, action), emit)
+              case Action.EndOfResponse =>
+                handleTransition(transition(state, action), emit)
         .maxIterations(MaxDecisionTurns)
         .run
       yield Completed(loop, preflight))
@@ -83,25 +116,33 @@ object WordGenerator:
 
     private def loopOptions(state: State): NonEmptyChunk[LoopOption[Action]] =
       val wordOptions =
-        if shouldForceEnd(state) then Vector.empty
-        else RankedWordSource.candidates(state).map: candidate =>
-          LoopOption.text(
-            f"word_${candidate.rank}%03d",
-            Action.SelectWord(candidate.word),
-            candidateDescription(state, candidate),
-          )
+        if state.hasFiniteResponsePlan then
+          RankedWordSource.candidates(state).map: candidate =>
+            LoopOption.text(
+              f"word_${candidate.rank}%03d",
+              Action.SelectWord(candidate.word),
+              candidateDescription(state, candidate),
+            )
+        else state.selectionPhase match
+          case LexicalTree.SelectionPhase.Branches =>
+            if shouldForceEnd(state) then Vector.empty
+            else LexicalTree.branchOptions(state)
+          case LexicalTree.SelectionPhase.Leaves(_) =>
+            LexicalTree.leafOptions(state)
+
       val endingOptions = endingActions(state).map:
         case Action.EndOfSentence => LoopOption.text(
           "end_sentence",
           Action.EndOfSentence,
-          "END_OF_SENTENCE: close the current complete thought with a period. Choose this before END_OF_RESPONSE when forced completion is active.",
+          "END_OF_SENTENCE: the current words already form a complete thought. Choose this immediately when the user request is satisfied, even by one word; do not pad a complete answer.",
         )
         case Action.EndOfResponse => LoopOption.text(
           "end_response",
           Action.EndOfResponse,
-          "END_OF_RESPONSE: stop now. Prefer this whenever the response already answers the user; never add a repetitive sentence.",
+          "END_OF_RESPONSE: stop now when the accumulated response already satisfies the user. Prefer a concise complete response over adding another sentence or unrelated words.",
         )
-        case Action.SelectWord(_) => throw IllegalStateException("A word is not an ending action")
+        case Action.SelectBranch(_) | Action.SelectWord(_) =>
+          throw IllegalStateException("A lexical selection is not an ending action")
       val options = wordOptions ++ endingOptions
 
       options match
@@ -112,6 +153,19 @@ object WordGenerator:
           "NEXT WORD 'the': emergency common-English fallback.",
         ))
 
+    private def handleTransition(
+      result: Transition,
+      emit: ServerSentEvent[String] => UIO[Unit],
+    ): UIO[LoopStep[State, String]] =
+      result match
+        case Transition.Continue(next, Emission.BranchSelected) =>
+          ZIO.succeed(LoopStep.Continue(next))
+        case Transition.Continue(next, Emission.Word(value)) =>
+          emit(serverEvent("word", value)).as(LoopStep.Continue(next))
+        case Transition.Continue(next, Emission.SentenceEnd) =>
+          emit(serverEvent("sentence", ".")).as(LoopStep.Continue(next))
+        case Transition.Done(response) => ZIO.succeed(LoopStep.Done(response))
+
     private def candidateDescription(
       state: State,
       candidate: RankedWordSource.Candidate,
@@ -120,30 +174,39 @@ object WordGenerator:
       s"NEXT WORD '${candidate.word}'. Resulting response tail: '$resultingTail'. " +
         s"Ranking evidence: ${candidate.source.description}. Do not choose it if the tail is redundant or ungrammatical."
 
-    private def stateView(state: State): String =
-      s"""Generate a useful, direct, concise response to the original user message one action at a time.
-         |Choose exactly one supplied action by considering the entire resulting response, not merely a locally plausible word pair.
-         |
-         |Decision budget: ${MaxDecisionTurns} total turns.
-         |Turns already used: ${state.decisionTurns}.
-         |Turns remaining, including END_OF_SENTENCE and END_OF_RESPONSE: ${state.remainingDecisionTurns}.
-         |You MUST finish within this budget. Select END_OF_RESPONSE before the remaining count reaches zero.
-         |
-         |Quality rules:
-         |- Answer the user rather than repeating their question.
-         |- Never repeat an idea or phrase already present in the response.
-         |- Prefer grammatical agreement using the full sentence context.
-         |- Usually use one to three concise sentences.
-         |- If the accumulated response already answers the question, select END_OF_RESPONSE now.
-         |
-         |Native Jev preflight decisions:
-         |${state.promptContext.guidance.map(instruction => s"- $instruction").mkString("\n")}
-         |
-         |Original user message:
-         |${state.prompt.value}
-         |
-         |Current accumulated response (${state.responseWords.size} words; ${state.wordsInCurrentSentence} in current sentence):
-         |${state.response}""".stripMargin
+    private def stateView(state: State): GenerationView =
+      val traversal = state.selectionPhase match
+        case LexicalTree.SelectionPhase.Branches =>
+          TraversalView("choose_branch", Vector.empty)
+        case LexicalTree.SelectionPhase.Leaves(retained) =>
+          TraversalView(
+            "choose_leaf",
+            retained.map(branch => RetainedBranchView(branch.id.value, branch.probability)),
+          )
+
+      GenerationView(
+        objective = "Choose actions that build a useful, direct, concise response one committed word at a time.",
+        originalUserMessage = state.prompt.value,
+        factualConstraints = state.promptContext.guidance,
+        accumulatedResponse = state.response,
+        currentSentenceTail = state.responseWords.takeRight(12),
+        wordsInCurrentSentence = state.wordsInCurrentSentence,
+        traversal = traversal,
+        budget = BudgetView(
+          maxJevRounds = MaxDecisionTurns,
+          usedJevRounds = state.decisionTurns,
+          remainingJevRounds = state.remainingDecisionTurns,
+          maxCommittedWords = MaxResponseWords,
+          committedWords = state.responseWords.size,
+        ),
+        qualityRules = Vector(
+          "Judge the complete resulting response, not merely a locally plausible word pair.",
+          "Answer the user rather than repeating the question.",
+          "Never repeat an idea or phrase already present in the response.",
+          "Prefer grammatical agreement using the full sentence context.",
+          "Finish as soon as the response adequately answers the user.",
+        ),
+      )
 
     private def serverEvent(eventType: String, data: String): ServerSentEvent[String] =
       ServerSentEvent(data, eventType = Some(eventType))

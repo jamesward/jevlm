@@ -5,7 +5,7 @@ import scala.util.Using
 object RankedWordSource:
   final case class Candidate(word: String, rank: Int, source: Source)
 
-  enum Source:
+  enum Source derives CanEqual:
     case JevPreflight
     case Phrase(context: Vector[String])
     case Bigram(previousWord: String)
@@ -26,6 +26,7 @@ object RankedWordSource:
       case Common                => "frequency-ranked English dictionary fallback"
 
   val MaxWordOptions = 96
+  val MaxTreeCandidates = 512
 
   private val englishDictionary: Vector[String] =
     Using.resource(IOSource.fromResource("dictionaries/frequency-words-en.txt")): source =>
@@ -123,15 +124,13 @@ object RankedWordSource:
         .take(4)
         .toVector
 
-  def candidates(state: State): Vector[Candidate] =
+  def candidates(state: State, limit: Int = MaxWordOptions): Vector[Candidate] =
     val previousWord = state.responseWords.lastOption
     val normalizedWords = state.responseWords.map(_.toLowerCase)
     val usedWords = normalizedWords.toSet
     val recentWords = normalizedWords.takeRight(3).toSet
     val normalizedPrompt = promptWords(state.prompt)
-    val hostWords = state.promptContext.priorityWords
-      .filterNot(word => usedWords.contains(word.toLowerCase))
-      .map(_ -> Source.JevPreflight)
+    val hostWords = state.nextPlannedWord.toVector.map(_ -> Source.JevPreflight)
 
     val phraseWords = phraseSuccessors.collectFirst:
       case (context, words) if normalizedWords.endsWith(context) =>
@@ -146,20 +145,21 @@ object RankedWordSource:
     val relatedWords = dictionaryRelated(normalizedPrompt).map(_ -> Source.DictionaryRelated)
     val responseWords = responseVocabulary.map(_ -> Source.ResponseVocabulary)
     val originalWords = normalizedPrompt.filterNot(usedWords.contains).map(_ -> Source.Prompt)
-    val ranked = (
-      hostWords.iterator ++
-      phraseWords.iterator ++
-      bigramWords.iterator ++
-      topicWords.iterator ++
-      responseWords.iterator ++
-      relatedWords.iterator ++
-      originalWords.iterator ++
-      englishDictionary.iterator.map(_ -> Source.Common)
-    )
+    val candidateStream =
+      if state.hasFiniteResponsePlan then hostWords.iterator
+      else
+        phraseWords.iterator ++
+          bigramWords.iterator ++
+          topicWords.iterator ++
+          responseWords.iterator ++
+          relatedWords.iterator ++
+          originalWords.iterator ++
+          englishDictionary.iterator.map(_ -> Source.Common)
+    val ranked = candidateStream
       .filterNot((word, _) => recentWords.contains(word.toLowerCase))
       .filterNot((word, _) => wouldRepeatNGram(state, word, 3))
       .distinctBy((word, _) => word.toLowerCase)
-      .take(MaxWordOptions)
+      .take(math.max(1, limit))
       .toVector
 
     ranked.zipWithIndex.map: (entry, index) =>

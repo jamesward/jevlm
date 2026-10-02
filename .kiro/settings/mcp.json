@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "sbt-mcp-jev-word-stream": {
+      "type": "http",
+      "url": "http://127.0.0.1:5015/",
+      "timeout": 1800000,
+      "disabled": false
+    }
+  }
+}

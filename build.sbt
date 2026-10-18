@@ -24,12 +24,6 @@ fork := true
 
 Compile / mainClass := Some("Main")
 
-// Local-only development MCP server. It remains loopback-bound and the plugin
-// automatically disables it in CI. `sbt-task` can execute arbitrary sbt tasks.
-mcpEnabled := true
-mcpHost := "127.0.0.1"
-mcpPort := 5015
-
 addCommandAlias("dev", "~runReload")
 
 // Agent Skills are extracted for coding agents and stay off the application classpath.

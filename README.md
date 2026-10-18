@@ -44,7 +44,7 @@ Every TypeSafe AI exchange logs its complete JSON request and complete decoded r
 The current source uses the sibling `../zio-typesafe-ai` checkout for the unreleased `loopWithTurn` API. Enable the local project reference with `-Dlocal`:
 
 ```bash
-./sbt -Dlocal dev
+./sbta -Dlocal dev
 ```
 
 After a zio-typesafe-ai release containing `loopWithTurn`, ordinary builds can use the published dependency again.
@@ -54,7 +54,7 @@ Open <http://localhost:8080>.
 ## Test and package
 
 ```bash
-./sbt -Dlocal "test; stage"
+./sbta -Dlocal "test; stage"
 ```
 
 ## Paid Jev evaluation suite
@@ -70,14 +70,14 @@ The focused suite is disabled unless `TYPESAFE_API_KEY` is set because every gen
 
 ```bash
 export TYPESAFE_API_KEY=YOUR_TYPESAFE_TOKEN
-./sbt -Dlocal "testOnly JevlmIntegrationSpec"
+./sbta -Dlocal "testOnly JevlmIntegrationSpec"
 ```
 
 Each case runs Jevlm once and uses `JevJudge` with a 0.55 pass threshold against that case's rubric. The two cases may execute in parallel. To run one case:
 
 ```bash
-./sbt -Dlocal 'testOnly JevlmIntegrationSpec -- -t "067 "' # say hello
-./sbt -Dlocal 'testOnly JevlmIntegrationSpec -- -t "001 "' # Denver weather
+./sbta -Dlocal 'testOnly JevlmIntegrationSpec -- -t "067 "' # say hello
+./sbta -Dlocal 'testOnly JevlmIntegrationSpec -- -t "001 "' # Denver weather
 ```
 
 A passing suite means Jev judged each sampled answer acceptable; it is not proof that Jevlm is more accurate than an LLM. A comparative accuracy claim requires running the same case catalog, sample count, and judge against explicitly named LLM baselines and reporting pass rates, uncertainty, failures, token usage, and cost.

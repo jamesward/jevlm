@@ -21,7 +21,7 @@ The generated skills are written under `.kiro/skills/`. Read relevant `SKILL.md`
   inspection, or guessed APIs whenever the question is about Scala symbols.
 - JavaDoc/ScalaDoc lookups are available through the same server via its
   proxied javadocs.dev tools.
-- sbt 2.x uses a persistent daemon. After changing environment variables or JVM `-D` properties such as `-Dlocal`, run `./sbta shutdown` before the next build so the new values take effect.
+- sbt 2.x uses a persistent daemon. After changing environment variables or JVM `-D` properties, run `./sbta shutdown` before the next build so the new values take effect.
 
 ## Agent tooling
 

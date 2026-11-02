@@ -1,5 +1,5 @@
-import com.jamesward.zio_typesafe_ai.TypeSafeAI
-import com.jamesward.zio_typesafe_ai.TypeSafeAI.*
+import com.jamesward.zio_decisions.Decisions
+import com.jamesward.zio_decisions.Decisions.*
 import WordGeneration.*
 import zio.*
 import zio.schema.{Schema, derived}

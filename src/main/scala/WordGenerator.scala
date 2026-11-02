@@ -1,5 +1,5 @@
-import com.jamesward.zio_typesafe_ai.TypeSafeAI
-import com.jamesward.zio_typesafe_ai.TypeSafeAI.*
+import com.jamesward.zio_decisions.{DecisionModel, Decisions}
+import com.jamesward.zio_decisions.Decisions.*
 import WordGeneration.*
 import zio.*
 import zio.http.ServerSentEvent
@@ -51,10 +51,10 @@ object WordGenerator:
     loop: LoopResult[String],
     preflight: PromptClassifier.Classified,
   )
-  val live: URLayer[TypeSafeAI.Client, WordGenerator] =
+  val live: URLayer[DecisionModel, WordGenerator] =
     ZLayer.fromFunction(Live.apply)
 
-  private final case class Live(client: TypeSafeAI.Client) extends WordGenerator:
+  private final case class Live(client: DecisionModel) extends WordGenerator:
     def stream(prompt: Prompt): ZStream[Any, Nothing, ServerSentEvent[String]] =
       ZStream.unwrapScoped:
         for
@@ -92,7 +92,7 @@ object WordGenerator:
     ) =
       (for
         preflight <- PromptClassifier.classify(prompt)
-        loop <- TypeSafeAI.loopWithTurn(State.initial(prompt, preflight.context))(
+        loop <- Decisions.loopWithTurn(State.initial(prompt, preflight.context))(
           state => Content(stateView(state)),
           state => ZIO.succeed(loopOptions(state)),
         ):

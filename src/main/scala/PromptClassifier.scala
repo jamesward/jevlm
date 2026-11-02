@@ -1,5 +1,5 @@
-import com.jamesward.zio_typesafe_ai.TypeSafeAI
-import com.jamesward.zio_typesafe_ai.TypeSafeAI.*
+import com.jamesward.zio_decisions.{DecisionModel, Decisions}
+import com.jamesward.zio_decisions.Decisions.*
 import WordGeneration.Prompt
 import zio.*
 
@@ -43,10 +43,10 @@ object PromptClassifier:
     ),
   )
 
-  def classify(prompt: Prompt): ZIO[TypeSafeAI.Client, TypeSafeAI.Error, Classified] =
+  def classify(prompt: Prompt): ZIO[DecisionModel, Decisions.Error, Classified] =
     for
       started <- Clock.nanoTime
-      result <- TypeSafeAI.ask(
+      result <- Decisions.ask(
         prompt.value,
         (requiresExternalData = externalDataQuestion),
       ).run

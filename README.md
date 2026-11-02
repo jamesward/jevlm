@@ -1,6 +1,6 @@
 # Jev Word Stream
 
-A Jev-only generative text experiment. The app uses the recursive loop in [`zio-typesafe-ai`](https://github.com/jamesward/zio-typesafe-ai) to traverse a contextual word hierarchy. Internal turns select either a structured lexical branch or a leaf word; only committed leaf words and sentence endings are streamed to the browser.
+A Jev-only generative text experiment. The app uses the recursive loop in [`zio-decisions`](https://github.com/jamesward/zio-decisions) to traverse a contextual word hierarchy. Internal turns select either a structured lexical branch or a leaf word; only committed leaf words and sentence endings are streamed to the browser.
 
 Every model round includes a structured view of the original user message, accumulated response, current sentence tail, factual constraints, traversal frontier, and separate Jev-round/committed-word budgets.
 
@@ -23,7 +23,7 @@ The packaged fallback is the English 2018 frequency list from [`hermitdave/Frequ
 
 ## Response cost
 
-The completion summary estimates Jev cost from aggregate usage reported by `zio-typesafe-ai`. TypeSafe AI's [published Jev pricing](https://typesafe.ai/blog/introducing-system-one-models-and-jev) is **$0.042 per million input tokens** ($42 per billion); output tokens are free. The browser displays this estimate beside response time when generation completes.
+The completion summary estimates Jev cost from aggregate usage reported by `zio-decisions`. TypeSafe AI's [published Jev pricing](https://typesafe.ai/blog/introducing-system-one-models-and-jev) is **$0.042 per million input tokens** ($42 per billion); output tokens are free. The browser displays this estimate beside response time when generation completes.
 
 ## Configure
 
@@ -37,47 +37,43 @@ Startup fails before server initialization if it is missing or blank. `TYPESAFE_
 
 ## Sensitive Jev HTTP logging
 
-Every TypeSafe AI exchange logs its complete JSON request and complete decoded response re-encoded as canonical JSON at `INFO`. This includes the original user message, accumulated response state, candidate descriptions, probabilities, and usage. Logging is implemented with zio-typesafe-ai's `ExchangeObserver`, below the library's per-turn retry boundary, so every physical success or failure is observed. HTTP headers are never supplied to the observer, so the `Authorization` header and API key cannot be logged through this path. Treat these body logs as sensitive and apply appropriate production retention and access controls.
+Every Jev exchange logs its complete JSON request and complete decoded response re-encoded as canonical JSON at `INFO`. This includes the original user message, accumulated response state, candidate descriptions, probabilities, and usage. Logging is implemented with zio-decisions' `ExchangeObserver`, below the library's per-turn retry boundary, so every physical success or failure is observed. HTTP headers are never supplied to the observer, so the `Authorization` header and API key cannot be logged through this path. Treat these body logs as sensitive and apply appropriate production retention and access controls.
 
 ## Run
 
-The current source uses the sibling `../zio-typesafe-ai` checkout for the unreleased `loopWithTurn` API. Enable the local project reference with `-Dlocal`:
-
 ```bash
-./sbta -Dlocal dev
+./sbta dev
 ```
-
-After a zio-typesafe-ai release containing `loopWithTurn`, ordinary builds can use the published dependency again.
 
 Open <http://localhost:8080>.
 
 ## Test and package
 
 ```bash
-./sbta -Dlocal "test; stage"
+./sbta "test; stage"
 ```
 
 ## Paid Jev evaluation suite
 
-The test dependency `com.jamesward:zio-evals_3:0.1.0` comes from Maven Central. The complete unpaid catalog still contains 100 cases across external-data truthfulness, numeric/counting, timeless facts, completion/anti-repetition, code concepts, ambiguity/calibrated limitations, and safety.
+The test dependency `com.jamesward:zio-evals_3` comes from Maven Central. The complete unpaid catalog still contains 100 cases across external-data truthfulness, numeric/counting, timeless facts, completion/anti-repetition, code concepts, ambiguity/calibrated limitations, and safety.
 
 To control token usage, `JevlmIntegrationSpec` runs only two paid high-value regressions:
 
 - `001` — current Denver weather must produce a truthful external-data limitation
 - `067` — `say hello` must terminate cleanly without unrelated trailing words
 
-The focused suite is disabled unless `TYPESAFE_API_KEY` is set because every generated word, the native prompt preflight, and every Jev judge verdict are paid API calls:
+The focused suite is disabled unless `TYPESAFE_API_KEY` is set because every generated word, the native prompt preflight, and every Jev judge verdict are paid API calls. Set it in the environment or in a gitignored `.env` file, which sbt-dotenv passes to the forked test JVM:
 
 ```bash
-export TYPESAFE_API_KEY=YOUR_TYPESAFE_TOKEN
-./sbta -Dlocal "testOnly JevlmIntegrationSpec"
+echo TYPESAFE_API_KEY=YOUR_TYPESAFE_TOKEN > .env
+./sbta "testOnly JevlmIntegrationSpec"
 ```
 
 Each case runs Jevlm once and uses `JevJudge` with a 0.55 pass threshold against that case's rubric. The two cases may execute in parallel. To run one case:
 
 ```bash
-./sbta -Dlocal 'testOnly JevlmIntegrationSpec -- -t "067 "' # say hello
-./sbta -Dlocal 'testOnly JevlmIntegrationSpec -- -t "001 "' # Denver weather
+./sbta 'testOnly JevlmIntegrationSpec -- -t "067 "' # say hello
+./sbta 'testOnly JevlmIntegrationSpec -- -t "001 "' # Denver weather
 ```
 
 A passing suite means Jev judged each sampled answer acceptable; it is not proof that Jevlm is more accurate than an LLM. A comparative accuracy claim requires running the same case catalog, sample count, and judge against explicitly named LLM baselines and reporting pass rates, uncertainty, failures, token usage, and cost.

@@ -13,7 +13,7 @@ scalacOptions ++= Seq(
 libraryDependencies ++= Seq(
   "com.jamesward" %% "zio-decisions" % "0.2.0",
 
-  "org.webjars.npm" % "tailwindcss__browser" % "4.3.3" % WebJar,
+  "org.webjars.npm" % "tailwindcss__browser" % "4.3.4" % WebJar,
 
   "dev.zio" %% "zio-test" % ("dev.zio" %% "zio").version % Test,
   "dev.zio" %% "zio-test-sbt" % ("dev.zio" %% "zio").version % Test,
@@ -28,7 +28,7 @@ addCommandAlias("dev", "~runReload")
 
 // Agent Skills are extracted for coding agents and stay off the application classpath.
 skillsJarsOutputDir := Some(file(".kiro/skills"))
-libraryDependencies += "com.jamesward" % "skills" % "0.0.17" % Skills
+libraryDependencies += "com.jamesward" % "skills" % "0.0.22" % Skills
 
 // sbt-dotenv: the forked test JVM gets `.env`'s variables (TYPESAFE_API_KEY), so the live
 // integration spec runs locally; `.env` is gitignored.

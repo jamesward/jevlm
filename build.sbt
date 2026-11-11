@@ -28,7 +28,7 @@ addCommandAlias("dev", "~runReload")
 
 // Agent Skills are extracted for coding agents and stay off the application classpath.
 skillsJarsOutputDir := Some(file(".kiro/skills"))
-libraryDependencies += "com.jamesward" % "skills" % "0.0.24" % Skills
+libraryDependencies += "com.jamesward" % "skills" % "0.0.25" % Skills
 
 // sbt-dotenv: the forked test JVM gets `.env`'s variables (TYPESAFE_API_KEY), so the live
 // integration spec runs locally; `.env` is gitignored.
